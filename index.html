@@ -119,33 +119,11 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 .tool:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.08)}
 .tool:disabled{opacity:.35;cursor:default}
 
-/* ---------- review (复盘) ---------- */
-.reviewing .board-wrap{
-  --bw:min(94vw,600px,max(240px,calc(100vh - 480px)));
-  --bw:min(94vw,600px,max(240px,calc(100dvh - 480px)));
-}
-.reviewing .tools{display:none}
-.review{margin-top:16px;background:#fff;border-radius:28px;padding:14px 16px 16px;box-shadow:0 6px 0 rgba(0,0,0,.07);border:4px solid var(--rc);animation:rise .45s cubic-bezier(.3,1.5,.5,1)}
-.teacher{display:flex;align-items:flex-start;gap:10px}
-.owl{font-size:54px;line-height:1;flex:none;animation:bob 1.6s ease-in-out infinite}
-.say{flex:1;font-size:clamp(19px,5vw,25px);line-height:1.45;min-height:3em}
-.say.pop{animation:pop .35s}
-.rv-dots{display:flex;justify-content:center;gap:8px;margin:10px 0}
-.rv-dots i{width:12px;height:12px;border-radius:50%;background:#eee6f8}
-.rv-dots i.on{background:var(--rc);transform:scale(1.25)}
-.rv-btns{display:flex;gap:10px}
-.rv-btns .btn{flex:1;font-size:22px;padding:10px 8px;background:var(--rc)}
-.rv-btns .btn.ghost{background:#f3f0fa;color:var(--ink);flex:.8}
-.rv-foot{text-align:center;margin-top:8px}
-.piece.dim{opacity:.28;filter:grayscale(.6);animation:none}
-.piece.ghost{opacity:.3;animation:none;box-shadow:none;outline:4px dashed var(--pc);outline-offset:2px}
+/* ---------- end of game ---------- */
+.ended .tools{display:none}
+.end-row{display:flex;gap:10px;justify-content:center;align-items:stretch;margin-top:18px;animation:rise .45s cubic-bezier(.3,1.5,.5,1)}
+.end-row .btn{flex:1;max-width:340px;font-size:26px;background:var(--rc)}
 .piece.focus{animation:winbounce .9s ease-in-out infinite;box-shadow:0 0 0 4px #fff,0 0 0 9px #ffd34d}
-.cell.spot{z-index:2}
-.cell.spot::after{content:"";position:absolute;inset:4%;border-radius:50%;border:5px dashed #ffb020;animation:spin 3s linear infinite,glow 1s ease-in-out infinite}
-.cell.spot::before{content:"👆";position:absolute;bottom:-22%;right:-12%;font-size:calc(var(--bw) / var(--n) * .42);z-index:3;animation:tapme .9s ease-in-out infinite}
-.badge{position:absolute;top:-10%;left:-8%;z-index:3;min-width:46%;height:46%;padding:0 4px;border-radius:999px;background:#ffd34d;color:var(--ink);font-family:'Baloo 2',sans-serif;font-weight:800;font-size:calc(var(--bw) / var(--n) * .3);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 0 rgba(0,0,0,.15);animation:pop .4s}
-#lineSvg{transition:opacity .3s}
-@keyframes tapme{0%,100%{transform:translateY(0)}50%{transform:translateY(-18%)}}
 
 #fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:50}
 
@@ -231,17 +209,9 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
       <button class="tool" id="newBtn">🔄<span>重来</span></button>
       <button class="tool" id="setupBtn">🐾<span>换人</span></button>
     </div>
-    <div class="review hidden" id="review">
-      <div class="teacher">
-        <div class="owl">🦉</div>
-        <div class="say" id="rvText"></div>
-      </div>
-      <div class="rv-dots" id="rvDots"></div>
-      <div class="rv-btns">
-        <button class="btn ghost" id="rvBack">🔊 再听一遍</button>
-        <button class="btn" id="rvNext">下一步 ▶</button>
-      </div>
-      <div class="rv-foot hidden" id="rvFoot"><button class="link" id="rvSetup">🐾 换人</button></div>
+    <div class="end-row hidden" id="endRow">
+      <button class="btn" id="againBtn">再来一局 ▶</button>
+      <button class="tool" id="endSetupBtn">🐾<span>换人</span></button>
     </div>
   </section>
 </div>
@@ -386,7 +356,7 @@ function renderSetup() {
   opts('modes', [[false, '👫', '两个人玩'], [true, '🤖', `和${P(1).a.n}玩`, '电脑来下']], solo, v => { solo = v; });
   $('levelBox').classList.toggle('hidden', !solo);
   opts('levels', [[0, '🐣', '让着我', '电脑会粗心'], [1, '🦊', '认真下', '电脑不放水']], level, v => { level = v; });
-  opts('teaches', [[true, '🔔', '要提醒', `${KID}快赢、快输时亮出格子`], [false, '🤫', '不用啦', '自己想']], teach, v => { teach = v; });
+  opts('teaches', [[true, '🔔', '要提醒', `${KID}快赢、快输时说一声`], [false, '🤫', '不用啦', '自己想']], teach, v => { teach = v; });
 
   const sz = $('sizes'); sz.innerHTML = '';
   SIZES.forEach(n => {
@@ -438,7 +408,7 @@ function newGame() {
   board = Array.from({ length: size }, () => Array(size).fill(null));
   history = []; over = false; locked = false;
   clearTimeout(aiTimer);
-  endReview();
+  hideEnd();
   $('lineSvg').innerHTML = '';
   clearHint();
   const el = $('board');
@@ -488,23 +458,21 @@ function announceTurn(start) {
 
 /* ---------- learning mode ----------
    On the kid's turn, if she is one piece away from winning, or the other player is,
-   light up that square and the two pieces next to it, and say what to do. */
+   make those pieces bounce and say so. The square to play is NOT shown: she finds it herself.
+   If there are several such lines, all of them bounce. */
 function nudge(p) {
   const o = P(1 - p.i);
   let cells = movesThatWin(p.i), mine = true;
   if (!cells.length) { cells = movesThatWin(o.i); mine = false; }
   if (!cells.length) return false;
   const who = mine ? p.i : o.i;
-  cells.forEach(c => {
-    cellEl(c[0], c[1]).classList.add('hint');
-    partners(board, c, who).forEach(x => cellEl(x[0], x[1]).querySelector('.piece')?.classList.add('focus'));
-  });
+  cells.forEach(c => partners(c, who).forEach(x => cellEl(x[0], x[1]).querySelector('.piece')?.classList.add('focus')));
   if (mine) {
-    setMsg(`✨ <b>${KID}差一个就赢啦！</b>`, p.color);
-    say(`${KID}看！${p.a.n}有两个连在一起了！再放一个到亮亮的格子，就赢啦！`);
+    setMsg(`✨ <b>${KID}差一个就赢啦！放哪里呢？</b>`, p.color);
+    say(`${KID}看！跳跳的${p.a.n}，差一个就连成三个啦！找一找，第三个放在哪里？`);
   } else {
-    setMsg(`⚠️ <b>小心！快堵住${o.a.n}！</b>`, o.color);
-    say(`小心！${o.a.n}有两个连在一起了！${KID}快下在亮亮的格子，把它堵住！`);
+    setMsg(`⚠️ <b>小心${o.a.n}！堵哪里呢？</b>`, o.color);
+    say(`小心！跳跳的${o.a.n}，差一个就连成三个了！${KID}找一找，堵在哪里？`);
   }
   sfxHint();
   return true;
@@ -597,7 +565,8 @@ function win(cells) {
   confetti(w.color, w.a.e);
   const cheer = l.kid ? `${KID}下次加油！` : (w.kid ? praise(l.role, w.a.n) : '真棒！');
   first = 1 - turn; // the other player starts next round
-  startReview(winSlides(w, l, cells, cheer), w.color, cells);
+  say(`${w.role}赢啦！${cheer}`);
+  showEnd(w.color, cells);
 }
 
 /* Praise for when the kid wins. l = loser's role, a = winner's animal name. */
@@ -631,196 +600,33 @@ function draw() {
   setMsg('平局！大家都很棒 🤝');
   sfxDraw();
   first = 1 - first;
-  startReview(drawSlides(), '#ffb020');
+  say('平局！大家都很棒！');
+  showEnd('#ffb020');
 }
 
-/* ---------- review (复盘) ----------
-   After every game the owl teacher walks through, one step at a time,
-   why the game ended the way it did, in words a small kid can follow.
-   The next game only starts from the last step. */
-const NUM = ['一', '二', '三', '四', '五'];
 const same = (a, b) => a[0] === b[0] && a[1] === b[1];
-let slides = [], slideAt = 0, slideTimers = [], reviewLine = null;
-
-function withBoard(b, fn) { const real = board; board = b; try { return fn(); } finally { board = real; } }
-// The board as it was after the first k moves.
-function snapshot(k) {
-  const b = Array.from({ length: size }, () => Array(size).fill(null));
-  for (let i = 0; i < k; i++) { const [r, c] = history[i]; b[r][c] = board[r][c]; }
-  return b;
-}
 // The pieces of `who` that a piece at `cell` would join into three in a row.
-function partners(b, cell, who) {
-  return withBoard(b, () => {
-    b[cell[0]][cell[1]] = who;
-    const run = lineThrough(cell[0], cell[1], who);
-    b[cell[0]][cell[1]] = null;
-    return run ? run.filter(x => !same(x, cell)) : [];
-  });
-}
-// Most recent move (before move `upto`) where `by` took a spot the other player needed to win.
-function lastBlock(by, upto) {
-  for (let i = upto - 1; i >= 0; i--) {
-    const cell = history[i], who = board[cell[0]][cell[1]];
-    if (by != null && who !== by) continue;
-    const two = partners(snapshot(i), cell, 1 - who);
-    if (two.length >= 2) return { cell, who, two };
-  }
-  return null;
-}
-function lineName(run) {
-  if (run.every(c => c[0] === run[0][0])) return '横线';
-  if (run.every(c => c[1] === run[0][1])) return '竖线';
-  return '斜线';
+function partners(cell, who) {
+  board[cell[0]][cell[1]] = who;
+  const run = lineThrough(cell[0], cell[1], who);
+  board[cell[0]][cell[1]] = null;
+  return run ? run.filter(x => !same(x, cell)) : [];
 }
 
-function winSlides(w, l, run, cheer) {
-  const n = history.length, W = history[n - 1], L = history[n - 2];
-  const before = snapshot(n - 2); // the board when the loser made their last move
-  const threats = withBoard(before, () => movesThatWin(w.i));
-  const missed = withBoard(before, () => movesThatWin(l.i));
-  const two = run.filter(c => !same(c, W));
-  const out = [];
-
-  // 1. cheer
-  out.push({
-    text: w.kid ? `${KID}赢啦！${cheer}`
-      : l.kid ? `${w.role}赢啦！${KID}别难过，我们一起来看看，${w.role}是怎么赢的。`
-      : `${w.role}赢啦！我们一起来看看，是怎么赢的。`,
-    marks: { win: run, line: true },
-  });
-
-  // 2. count the line
-  const count = run.map((_, k) => NUM[k]).join('、');
-  out.push({
-    text: `我们来数一数：${count}！${w.a.n}的${NUM[run.length - 1]}个棋子排成了一条${lineName(run)}，一个挨着一个，中间没有空格，就赢啦！`,
-    marks: { dim: true, focus: run, line: true, badges: run.map((c, k) => ({ cell: c, text: k + 1, delay: 700 + k * 550 })) },
-  });
-
-  // 3. why the loser could not stop it
-  const fork = threats.length >= 2;
-  const blockedOne = threats.some(t => same(t, L));
-  if (fork && blockedOne) {
-    out.push({
-      text: `再看这里：${l.role}已经堵住了一个地方，真不错！可是${w.a.n}在这里还有两个连在一起，${l.role}一次只能下一个，堵不过来啦。这是${w.role}的厉害招数：同时准备好两条路！`,
-      marks: { dim: true, focus: [...two, L], ghost: [W], spot: [W], badges: [{ cell: L, text: '✋', delay: 300 }] },
-    });
-  } else if (fork) {
-    out.push({
-      text: `再看：${w.a.n}有两个地方都只差一个，就能连成三个。${l.role}一次只能堵一个，所以挡不住啦！这是${w.role}的厉害招数：同时准备好两条路！`,
-      marks: { dim: true, focus: two, ghost: [W, L], spot: threats },
-    });
-  } else {
-    out.push({
-      text: `再看这里：赢之前，${w.a.n}已经有两个连在一起了，只差这一个空格。${l.role}要是先下在这里，就能把路堵住啦！`,
-      marks: { dim: true, focus: two, ghost: [W, L], spot: [W] },
-    });
-  }
-
-  // 4. one more thing worth seeing, if there is one
-  if (missed.length) {
-    const m = missed[0];
-    out.push({
-      text: `还有哦！其实${l.role}也差一点就赢了！${l.a.n}要是下在这个空格，也能连成三个呢。`,
-      marks: { dim: true, focus: partners(before, m, l.i), ghost: [W, L], spot: [m] },
-    });
-  } else {
-    const b = lastBlock(w.i, n - 1);
-    if (b) out.push({
-      text: `而且呀，${w.role}还在这里把${l.role}的路堵住了！${l.a.n}本来有两个连在一起，被${w.a.n}一挡，就连不起来啦。`,
-      marks: { dim: true, focus: [b.cell, ...b.two], badges: [{ cell: b.cell, text: '✋', delay: 300 }] },
-    });
-  }
-
-  // 5. the tip to remember
-  out.push({
-    text: w.kid
-      ? `${KID}的小秘诀：先让自己的两个棋子连在一起，再找旁边的空格，放上第三个！还要记得，看到别人有两个连在一起，就赶快堵住！`
-      : l.kid
-      ? `小秘诀：每次下棋之前，先看一看，${w.role}有没有两个连在一起？有的话，赶快把旁边的空格堵住！下一局${KID}一定能行！`
-      : `小秘诀：先让自己的两个棋子连在一起，再放上第三个。看到别人有两个连在一起，就赶快堵住！`,
-    marks: { win: run, line: true },
-  });
-  return out;
+/* ---------- end of game ---------- */
+let winLine = null, endTimer = null;
+function showEnd(color, run) {
+  winLine = run ? { cells: run, color } : null;
+  $('endRow').style.setProperty('--rc', color);
+  clearTimeout(endTimer);
+  endTimer = setTimeout(() => { $('game').classList.add('ended'); $('endRow').classList.remove('hidden'); }, 1200);
 }
-
-function drawSlides() {
-  const out = [{ text: '平局！棋盘放满啦，谁都没有连成三个。我们来看看为什么。', marks: {} }];
-  const b = lastBlock(null, history.length);
-  if (b) {
-    const p = P(b.who), o = P(1 - b.who);
-    out.push({
-      text: `看这里！${o.a.n}本来有两个连在一起，只差一个就赢了。${p.role}赶快下在这里，把路堵住了，真聪明！`,
-      marks: { dim: true, focus: [b.cell, ...b.two], badges: [{ cell: b.cell, text: '✋', delay: 300 }] },
-    });
-  }
-  out.push({ text: `所以呀，看到别人有两个连在一起，就要赶快堵住！大家都很会堵，谁也没赢，都很棒！`, marks: {} });
-  return out;
+function hideEnd() {
+  clearTimeout(endTimer); winLine = null;
+  $('game').classList.remove('ended'); $('endRow').classList.add('hidden');
 }
-
-function clearMarks() {
-  slideTimers.forEach(clearTimeout); slideTimers = [];
-  for (const el of $('board').children) {
-    el.classList.remove('spot');
-    el.querySelectorAll('.badge').forEach(x => x.remove());
-    const p = el.querySelector('.piece');
-    if (p) p.classList.remove('dim', 'ghost', 'focus', 'win');
-  }
-  $('lineSvg').style.opacity = 0;
-}
-function mark({ dim = false, focus = [], ghost = [], spot = [], badges = [], win = [], line = false }) {
-  clearMarks();
-  const piece = c => cellEl(c[0], c[1]).querySelector('.piece');
-  if (dim) for (const el of $('board').children) el.querySelector('.piece')?.classList.add('dim');
-  const set = (cells, cls) => cells.forEach(c => { const p = piece(c); if (p) { p.classList.remove('dim'); p.classList.add(cls); } });
-  set(win, 'win'); set(focus, 'focus'); set(ghost, 'ghost');
-  spot.forEach(c => cellEl(c[0], c[1]).classList.add('spot'));
-  badges.forEach(({ cell, text, delay }) => slideTimers.push(setTimeout(() => {
-    const s = document.createElement('span'); s.className = 'badge'; s.textContent = text;
-    cellEl(cell[0], cell[1]).appendChild(s); tone(660 + 110 * (typeof text === 'number' ? text : 0), .12, 'triangle');
-  }, delay)));
-  if (line && reviewLine) drawLine(reviewLine.cells, reviewLine.color);
-}
-
-function startReview(list, color, run) {
-  slides = list; slideAt = 0;
-  reviewLine = run ? { cells: run, color } : null;
-  $('review').style.setProperty('--rc', color);
-  slideTimers.push(setTimeout(() => {
-    $('game').classList.add('reviewing');
-    $('review').classList.remove('hidden');
-    showSlide(0);
-  }, run ? 1300 : 600));
-}
-function endReview() {
-  clearMarks();
-  $('game').classList.remove('reviewing');
-  $('review').classList.add('hidden');
-  slides = [];
-}
-function showSlide(i) {
-  slideAt = i;
-  const s = slides[i], last = i === slides.length - 1;
-  mark(s.marks);
-  const t = $('rvText'); t.textContent = s.text;
-  t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop');
-  $('rvDots').innerHTML = slides.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
-  $('rvBack').textContent = last ? '🔄 再看一遍' : '🔊 再听一遍';
-  $('rvNext').textContent = last ? '再来一局 ▶' : '下一步 ▶';
-  $('rvFoot').classList.toggle('hidden', !last);
-  say(s.text);
-}
-$('rvNext').onclick = () => {
-  audio();
-  if (slideAt < slides.length - 1) { tone(700, .1, 'triangle'); showSlide(slideAt + 1); }
-  else { turn = first; newGame(); }
-};
-$('rvBack').onclick = () => {
-  audio();
-  if (slideAt < slides.length - 1) say(slides[slideAt].text);
-  else showSlide(0);
-};
-$('rvSetup').onclick = () => $('setupBtn').click();
+$('againBtn').onclick = () => { audio(); turn = first; newGame(); };
+$('endSetupBtn').onclick = () => $('setupBtn').click();
 
 function drawLine(cells, color) {
   const wrap = $('boardWrap').getBoundingClientRect();
@@ -828,19 +634,18 @@ function drawLine(cells, color) {
   const [x1, y1] = center(cells[0]), [x2, y2] = center(cells[cells.length - 1]);
   const len = Math.hypot(x2 - x1, y2 - y1) + 1;
   const w = cellEl(0, 0).getBoundingClientRect().width * .22;
-  $('lineSvg').style.opacity = 1;
   $('lineSvg').innerHTML = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${w}" style="--len:${len}"/>`;
 }
 
 // The line is drawn in pixels, so redraw it when the screen is rotated or resized.
-addEventListener('resize', () => { if (over && reviewLine && $('lineSvg').style.opacity !== '0') drawLine(reviewLine.cells, reviewLine.color); });
+addEventListener('resize', () => { if (over && winLine) drawLine(winLine.cells, winLine.color); });
 
 $('newBtn').onclick = () => { if (history.length && !over && !confirm('重新开始这一局吗？')) return; turn = first; newGame(); };
 $('setupBtn').onclick = () => {
   if (history.length && !over && !confirm('不下这一局了，去换人吗？')) return;
   if (window.speechSynthesis) speechSynthesis.cancel();
   clearTimeout(aiTimer);
-  endReview(); $('game').classList.add('hidden'); $('setup').classList.remove('hidden');
+  hideEnd(); $('game').classList.add('hidden'); $('setup').classList.remove('hidden');
   store.set('first', first); renderSetup();
 };
 

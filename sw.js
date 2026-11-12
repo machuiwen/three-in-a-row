@@ -1,7 +1,7 @@
 // Keeps a copy of the game on the device so it opens without internet.
 // Online: always fetch the newest version and refresh the saved copy.
 // Offline (or the network takes more than 3 seconds): use the saved copy.
-const CACHE = 'sanziqi-v1';
+const CACHE = 'sanziqi-v2';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
