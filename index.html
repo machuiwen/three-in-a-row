@@ -6,7 +6,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>三子棋</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐰</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<meta name="apple-mobile-web-app-title" content="三子棋">
+<meta name="theme-color" content="#fff4df">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<!-- Font loads without holding up the page: if Google Fonts can't be reached, system fonts are used. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 :root{
   --ink:#3a2e5c; --muted:#8a80a8;
@@ -65,6 +72,13 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 .btn{background:var(--p0);color:#fff;font-size:24px;padding:10px 26px;border-radius:999px;box-shadow:0 5px 0 rgba(0,0,0,.18);transition:transform .1s}
 .btn:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.18)}
 .btn.big{display:block;width:100%;font-size:30px;padding:14px;margin-top:16px;animation:pulse 1.6s ease-in-out infinite}
+.name-card{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.name-card .lbl{margin:0}
+#kidName{flex:1;min-width:120px;font:inherit;font-size:24px;color:var(--p0);padding:6px 14px;border-radius:999px;border:3px solid #f3f0fa;background:#fffdf7;outline:none;user-select:text;-webkit-user-select:text}
+#kidName:focus{border-color:var(--p0)}
+.sub{margin-top:12px}
+.opt .av{line-height:1.1}
+.opt small{font-size:14px;color:var(--muted)}
 .link{background:none;color:var(--muted);font-size:16px;text-decoration:underline}
 
 /* ---------- game ---------- */
@@ -162,6 +176,19 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 
   <!-- setup screen -->
   <section id="setup">
+    <div class="card name-card">
+      <label class="lbl" for="kidName">小朋友叫什么名字？</label>
+      <input id="kidName" maxlength="8" placeholder="宝宝" autocomplete="off" enterkeyhint="done">
+    </div>
+
+    <div class="card">
+      <p class="lbl">和谁玩？</p>
+      <div class="opts" id="modes"></div>
+      <div class="sub hidden" id="levelBox">
+        <div class="opts" id="levels"></div>
+      </div>
+    </div>
+
     <div class="players-setup" id="pcards"></div>
 
     <div class="card">
@@ -172,6 +199,11 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
     <div class="card">
       <p class="lbl">谁先下？</p>
       <div class="opts" id="firsts"></div>
+    </div>
+
+    <div class="card">
+      <p class="lbl">要不要小提醒？</p>
+      <div class="opts" id="teaches"></div>
     </div>
 
     <button class="btn big" id="startBtn">开始玩！▶</button>
@@ -218,8 +250,8 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 const $ = id => document.getElementById(id);
 
 /* ---------- data ---------- */
-const KID = '溪溪';
-const ROLES = [KID, '爸爸', '妈妈', '外婆'];
+const ADULTS = ['爸爸', '妈妈', '外婆', '外公', '奶奶', '爷爷'];
+const KIDKEY = '@kid'; // the kid's role is stored under this key; the name is typed in on the setup page
 const ANIMALS = [
   { e: '🐰', n: '小兔子' }, { e: '🐻', n: '小熊' }, { e: '🐱', n: '小猫' }, { e: '🐶', n: '小狗' },
   { e: '🐼', n: '熊猫' }, { e: '🦄', n: '独角兽' }, { e: '🐸', n: '青蛙' }, { e: '🐥', n: '小鸡' },
@@ -233,18 +265,34 @@ const store = {
   set(k, v) { try { localStorage.setItem('sanziqi-' + k, JSON.stringify(v)); } catch (e) {} },
 };
 
-let players = store.get('players', [{ role: KID, animal: 0 }, { role: '妈妈', animal: 1 }]);
+let KID = store.get('kid', null);
+let players = store.get('players', [{ role: KIDKEY, animal: 0 }, { role: '妈妈', animal: 1 }]);
 let size = store.get('size', 5);
 let first = store.get('first', 0);
 let scores = store.get('scores', {});
-// The kid's role used to be called 宝宝; carry over saved picks and stars.
-players.forEach(p => { if (!ROLES.includes(p.role)) p.role = p.role === '宝宝' ? KID : ROLES.find(r => !players.some(q => q.role === r)); });
-if (scores['宝宝'] != null) { scores[KID] = (scores[KID] || 0) + scores['宝宝']; delete scores['宝宝']; store.set('scores', scores); }
+let solo = store.get('solo', false);   // play against a computer animal
+let level = store.get('level', 0);     // 0 = the animal goes easy, 1 = it plays properly
+let teach = store.get('teach', true);  // warn / nudge the kid during play
+// Older versions saved the kid's name as the role itself. Move that to KIDKEY and keep the name and stars.
+{
+  const known = r => r === KIDKEY || ADULTS.includes(r);
+  players.forEach(p => { if (!known(p.role)) { if (!KID && p.role !== '宝宝') KID = p.role; p.role = KIDKEY; } });
+  if (players[0].role === players[1].role) players[1].role = ADULTS.find(r => r !== players[0].role);
+  let moved = false;
+  for (const k of Object.keys(scores)) if (!known(k) && !ANIMALS.some(a => a.n === k)) { scores[KIDKEY] = (scores[KIDKEY] || 0) + scores[k]; delete scores[k]; moved = true; }
+  if (moved) store.set('scores', scores);
+  KID = KID || '宝宝';
+  store.set('kid', KID); store.set('players', players);
+}
 let soundOn = store.get('sound', true);
 
-let board = [], turn = 0, history = [], over = false, locked = false, hintTimer = null;
+let board = [], turn = 0, history = [], over = false, locked = false, hintTimer = null, aiTimer = null;
 
-const P = i => ({ ...players[i], i, a: ANIMALS[players[i].animal], color: COLORS[i] });
+// key = what stars are saved under; role = the name shown and spoken.
+const P = i => {
+  const raw = players[i].role, a = ANIMALS[players[i].animal], ai = solo && i === 1;
+  return { i, a, color: COLORS[i], ai, kid: !ai && raw === KIDKEY, key: ai ? a.n : raw, role: ai ? a.n : raw === KIDKEY ? KID : raw };
+};
 
 /* ---------- sound & speech ---------- */
 let ac = null;
@@ -303,19 +351,19 @@ function renderSetup() {
     const p = P(i), other = players[1 - i];
     const c = document.createElement('div');
     c.className = 'pcard'; c.style.setProperty('--pc', p.color);
-    c.innerHTML = `<div class="preview">${p.a.e}</div><div class="pname">${p.role}的${p.a.n}</div>`;
+    c.innerHTML = `<div class="preview">${p.a.e}</div><div class="pname">${p.ai ? p.a.n + '（电脑）' : p.role + '的' + p.a.n}</div>`;
     const roles = document.createElement('div'); roles.className = 'roles';
-    ROLES.forEach(r => {
+    if (!p.ai) [KIDKEY, ...ADULTS].forEach(r => {
       const b = document.createElement('button');
-      b.className = 'role' + (r === p.role ? ' on' : ''); b.textContent = r;
-      b.disabled = r === other.role;
+      b.className = 'role' + (r === players[i].role ? ' on' : ''); b.textContent = r === KIDKEY ? KID : r;
+      b.disabled = !solo && r === other.role;
       b.onclick = () => { players[i].role = r; tone(660 + i * 120, .1, 'triangle'); saveSetup(); };
       roles.appendChild(b);
     });
     const animals = document.createElement('div'); animals.className = 'animals';
     ANIMALS.forEach((a, k) => {
       const b = document.createElement('button');
-      b.className = 'animal' + (k === p.animal ? ' on' : ''); b.textContent = a.e;
+      b.className = 'animal' + (k === players[i].animal ? ' on' : ''); b.textContent = a.e;
       b.disabled = k === other.animal;
       b.setAttribute('aria-label', a.n);
       b.onclick = () => { players[i].animal = k; sfxPlace(i); say(a.n); saveSetup(); };
@@ -324,6 +372,21 @@ function renderSetup() {
     c.append(roles, animals);
     wrap.appendChild(c);
   });
+
+  const opts = (id, list, cur, pickFn) => {
+    const box = $(id); box.innerHTML = '';
+    list.forEach(([val, icon, label, note]) => {
+      const b = document.createElement('button');
+      b.className = 'opt' + (val === cur ? ' on' : '');
+      b.innerHTML = `<div class="av">${icon}</div><div>${label}</div>${note ? `<small>${note}</small>` : ''}`;
+      b.onclick = () => { pickFn(val); tone(620, .1, 'triangle'); saveSetup(); };
+      box.appendChild(b);
+    });
+  };
+  opts('modes', [[false, '👫', '两个人玩'], [true, '🤖', `和${P(1).a.n}玩`, '电脑来下']], solo, v => { solo = v; });
+  $('levelBox').classList.toggle('hidden', !solo);
+  opts('levels', [[0, '🐣', '让着我', '电脑会粗心'], [1, '🦊', '认真下', '电脑不放水']], level, v => { level = v; });
+  opts('teaches', [[true, '🔔', '要提醒', `${KID}快赢、快输时亮出格子`], [false, '🤫', '不用啦', '自己想']], teach, v => { teach = v; });
 
   const sz = $('sizes'); sz.innerHTML = '';
   SIZES.forEach(n => {
@@ -347,7 +410,17 @@ function renderSetup() {
 }
 function saveSetup() {
   store.set('players', players); store.set('size', size); store.set('first', first);
+  store.set('solo', solo); store.set('level', level); store.set('teach', teach);
   renderSetup();
+}
+{
+  const inp = $('kidName');
+  inp.value = KID === '宝宝' ? '' : KID;
+  inp.oninput = () => {
+    KID = inp.value.replace(/[<>&"'`]/g, '').trim() || '宝宝';
+    store.set('kid', KID); renderSetup();
+  };
+  inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
 }
 $('startBtn').onclick = () => {
   audio();
@@ -364,6 +437,7 @@ $('resetScore').onclick = () => {
 function newGame() {
   board = Array.from({ length: size }, () => Array(size).fill(null));
   history = []; over = false; locked = false;
+  clearTimeout(aiTimer);
   endReview();
   $('lineSvg').innerHTML = '';
   clearHint();
@@ -390,12 +464,12 @@ function renderBar() {
     chip.style.setProperty('--pc', p.color);
     chip.querySelector('.av').textContent = p.a.e;
     chip.querySelector('.nm').textContent = p.role;
-    chip.querySelector('.sc').textContent = '⭐ ' + (scores[p.role] || 0);
+    chip.querySelector('.sc').textContent = '⭐ ' + (scores[p.key] || 0);
     chip.classList.toggle('turn', !over && turn === i);
     chip.classList.remove('dance');
   });
-  $('undoBtn').disabled = over || history.length === 0;
-  $('hintBtn').disabled = over;
+  $('undoBtn').disabled = over || history.length < undoCount();
+  $('hintBtn').disabled = over || P(turn).ai;
 }
 
 function setMsg(html, color) {
@@ -407,11 +481,76 @@ function setMsg(html, color) {
 function announceTurn(start) {
   const p = P(turn);
   setMsg(`轮到 ${p.a.e} <b>${p.role}</b> 啦`, p.color);
+  if (p.ai) { if (start) say(`${p.role}先下`); aiMove(); return; }
+  if (teach && p.kid && nudge(p)) return;
   say(start ? `${p.role}先下` : `轮到${p.role}啦`);
 }
 
-function tap(r, c, el) {
+/* ---------- learning mode ----------
+   On the kid's turn, if she is one piece away from winning, or the other player is,
+   light up that square and the two pieces next to it, and say what to do. */
+function nudge(p) {
+  const o = P(1 - p.i);
+  let cells = movesThatWin(p.i), mine = true;
+  if (!cells.length) { cells = movesThatWin(o.i); mine = false; }
+  if (!cells.length) return false;
+  const who = mine ? p.i : o.i;
+  cells.forEach(c => {
+    cellEl(c[0], c[1]).classList.add('hint');
+    partners(board, c, who).forEach(x => cellEl(x[0], x[1]).querySelector('.piece')?.classList.add('focus'));
+  });
+  if (mine) {
+    setMsg(`✨ <b>${KID}差一个就赢啦！</b>`, p.color);
+    say(`${KID}看！${p.a.n}有两个连在一起了！再放一个到亮亮的格子，就赢啦！`);
+  } else {
+    setMsg(`⚠️ <b>小心！快堵住${o.a.n}！</b>`, o.color);
+    say(`小心！${o.a.n}有两个连在一起了！${KID}快下在亮亮的格子，把它堵住！`);
+  }
+  sfxHint();
+  return true;
+}
+
+/* ---------- computer player ---------- */
+const pickOne = a => a[Math.floor(Math.random() * a.length)];
+function aiMove() {
+  clearTimeout(aiTimer);
+  aiTimer = setTimeout(() => {
+    if (over || !P(turn).ai) return;
+    const [r, c] = aiPick();
+    tap(r, c, cellEl(r, c), true);
+  }, 900 + Math.random() * 500);
+}
+function aiPick() {
+  const me = turn, you = 1 - turn, hard = level === 1;
+  const has = (list, c) => list.some(x => x[0] === c[0] && x[1] === c[1]);
+  let empty = [];
+  for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (board[r][c] === null) empty.push([r, c]);
+  const wins = movesThatWin(me), blocks = movesThatWin(you);
+  // Easy level is careless on purpose: it often misses its own win and often forgets to block.
+  if (wins.length && (hard || Math.random() < .55)) return pickOne(wins);
+  if (blocks.length && (hard || Math.random() < .4)) return pickOne(blocks);
+  if (!hard) {
+    const rest = empty.filter(c => !has(wins, c) && !has(blocks, c));
+    if (rest.length) empty = rest;
+  }
+  // Otherwise play next to pieces already on the board. Hard level picks the square that sets up the most ways to win.
+  const score = ([r, c]) => {
+    let near = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++)
+      if ((dr || dc) && inside(r + dr, c + dc) && board[r + dr][c + dc] !== null) near++;
+    if (!hard) return Math.min(near, 1) + Math.random();
+    board[r][c] = me; const mine = movesThatWin(me).length; board[r][c] = you; const theirs = movesThatWin(you).length; board[r][c] = null;
+    const mid = (size - 1) / 2, far = Math.abs(r - mid) + Math.abs(c - mid);
+    return mine * 10 + theirs * 6 + near - far * .5 + Math.random() * .5;
+  };
+  return empty.map(c => [score(c), c]).sort((a, b) => b[0] - a[0])[0][1];
+}
+// In a game against the computer, undo also takes back the computer's reply.
+function undoCount() { return solo && !P(turn).ai ? 2 : 1; }
+
+function tap(r, c, el, fromAi) {
   if (over || locked) return;
+  if (P(turn).ai && !fromAi) return;
   if (board[r][c] !== null) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); sfxBuzz(); return; }
   clearHint();
   board[r][c] = turn;
@@ -447,7 +586,7 @@ function lineThrough(r, c, who) {
 function win(cells) {
   over = true;
   const w = P(turn), l = P(1 - turn);
-  scores[w.role] = (scores[w.role] || 0) + 1; store.set('scores', scores);
+  scores[w.key] = (scores[w.key] || 0) + 1; store.set('scores', scores);
   cells.forEach(([r, c]) => cellEl(r, c).querySelector('.piece').classList.add('win'));
   drawLine(cells, w.color);
   renderBar();
@@ -456,7 +595,7 @@ function win(cells) {
   setMsg(`${w.a.e} <b>${w.role}</b> 连成三个啦！`, w.color);
   sfxWin();
   confetti(w.color, w.a.e);
-  const cheer = l.role === KID ? `${KID}下次加油！` : (w.role === KID ? praise(l.role, w.a.n) : '真棒！');
+  const cheer = l.kid ? `${KID}下次加油！` : (w.kid ? praise(l.role, w.a.n) : '真棒！');
   first = 1 - turn; // the other player starts next round
   startReview(winSlides(w, l, cells, cheer), w.color, cells);
 }
@@ -545,8 +684,8 @@ function winSlides(w, l, run, cheer) {
 
   // 1. cheer
   out.push({
-    text: w.role === KID ? `${KID}赢啦！${cheer}`
-      : l.role === KID ? `${w.role}赢啦！${KID}别难过，我们一起来看看，${w.role}是怎么赢的。`
+    text: w.kid ? `${KID}赢啦！${cheer}`
+      : l.kid ? `${w.role}赢啦！${KID}别难过，我们一起来看看，${w.role}是怎么赢的。`
       : `${w.role}赢啦！我们一起来看看，是怎么赢的。`,
     marks: { win: run, line: true },
   });
@@ -595,9 +734,9 @@ function winSlides(w, l, run, cheer) {
 
   // 5. the tip to remember
   out.push({
-    text: w.role === KID
+    text: w.kid
       ? `${KID}的小秘诀：先让自己的两个棋子连在一起，再找旁边的空格，放上第三个！还要记得，看到别人有两个连在一起，就赶快堵住！`
-      : l.role === KID
+      : l.kid
       ? `小秘诀：每次下棋之前，先看一看，${w.role}有没有两个连在一起？有的话，赶快把旁边的空格堵住！下一局${KID}一定能行！`
       : `小秘诀：先让自己的两个棋子连在一起，再放上第三个。看到别人有两个连在一起，就赶快堵住！`,
     marks: { win: run, line: true },
@@ -640,7 +779,7 @@ function mark({ dim = false, focus = [], ghost = [], spot = [], badges = [], win
     const s = document.createElement('span'); s.className = 'badge'; s.textContent = text;
     cellEl(cell[0], cell[1]).appendChild(s); tone(660 + 110 * (typeof text === 'number' ? text : 0), .12, 'triangle');
   }, delay)));
-  if (line && reviewLine) { drawLine(reviewLine.cells, reviewLine.color); $('lineSvg').style.opacity = 1; }
+  if (line && reviewLine) drawLine(reviewLine.cells, reviewLine.color);
 }
 
 function startReview(list, color, run) {
@@ -689,27 +828,36 @@ function drawLine(cells, color) {
   const [x1, y1] = center(cells[0]), [x2, y2] = center(cells[cells.length - 1]);
   const len = Math.hypot(x2 - x1, y2 - y1) + 1;
   const w = cellEl(0, 0).getBoundingClientRect().width * .22;
+  $('lineSvg').style.opacity = 1;
   $('lineSvg').innerHTML = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${w}" style="--len:${len}"/>`;
 }
+
+// The line is drawn in pixels, so redraw it when the screen is rotated or resized.
+addEventListener('resize', () => { if (over && reviewLine && $('lineSvg').style.opacity !== '0') drawLine(reviewLine.cells, reviewLine.color); });
 
 $('newBtn').onclick = () => { if (history.length && !over && !confirm('重新开始这一局吗？')) return; turn = first; newGame(); };
 $('setupBtn').onclick = () => {
   if (history.length && !over && !confirm('不下这一局了，去换人吗？')) return;
   if (window.speechSynthesis) speechSynthesis.cancel();
+  clearTimeout(aiTimer);
   endReview(); $('game').classList.add('hidden'); $('setup').classList.remove('hidden');
   store.set('first', first); renderSetup();
 };
 
 $('undoBtn').onclick = () => {
-  if (over || !history.length) return;
+  const n = undoCount();
+  if (over || history.length < n) return;
+  clearTimeout(aiTimer);
   clearHint();
-  const [r, c] = history.pop();
-  board[r][c] = null;
-  const el = cellEl(r, c), piece = el.querySelector('.piece');
-  piece.classList.add('out');
-  setTimeout(() => { el.innerHTML = ''; el.classList.add('open'); }, 250);
+  for (let k = 0; k < n; k++) {
+    const [r, c] = history.pop();
+    board[r][c] = null;
+    const el = cellEl(r, c), piece = el.querySelector('.piece');
+    piece.classList.add('out');
+    setTimeout(() => { if (board[r][c] === null) { el.innerHTML = ''; el.classList.add('open'); } }, 250);
+    turn = 1 - turn;
+  }
   sfxUndo();
-  turn = 1 - turn;
   renderBar();
   announceTurn(false);
 };
@@ -736,9 +884,10 @@ function nearMine(who) {
 function clearHint() {
   clearTimeout(hintTimer);
   document.querySelectorAll('.cell.hint').forEach(e => e.classList.remove('hint'));
+  document.querySelectorAll('#board .piece.focus').forEach(e => e.classList.remove('focus'));
 }
 $('hintBtn').onclick = () => {
-  if (over) return;
+  if (over || P(turn).ai) return;
   clearHint();
   const p = P(turn);
   let cells = movesThatWin(turn), text, speech;
@@ -791,6 +940,9 @@ function step() {
 /* ---------- go ---------- */
 renderSound();
 renderSetup();
+
+// Keeps a copy of the game on the device so it opens without internet.
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>
