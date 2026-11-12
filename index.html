@@ -110,7 +110,7 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 .win-card{background:#fff;border-radius:32px;padding:18px 24px 22px;text-align:center;box-shadow:0 10px 0 rgba(0,0,0,.1);width:min(440px,100%);animation:rise .5s cubic-bezier(.3,1.5,.5,1)}
 .win-card .big{font-size:84px;line-height:1;animation:dance .6s ease-in-out infinite;display:inline-block}
 .win-title{font-size:38px;margin:6px 0 0;color:var(--wc)}
-.win-sub{font-size:22px;color:var(--muted);margin:2px 0 14px}
+.win-sub{font-size:22px;line-height:1.35;color:var(--muted);margin:4px 0 14px}
 .win-card .btn{background:var(--wc);font-size:28px;width:100%}
 
 #fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:50}
@@ -195,7 +195,8 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 const $ = id => document.getElementById(id);
 
 /* ---------- data ---------- */
-const ROLES = ['宝宝', '爸爸', '妈妈', '外婆'];
+const KID = '溪溪';
+const ROLES = [KID, '爸爸', '妈妈', '外婆'];
 const ANIMALS = [
   { e: '🐰', n: '小兔子' }, { e: '🐻', n: '小熊' }, { e: '🐱', n: '小猫' }, { e: '🐶', n: '小狗' },
   { e: '🐼', n: '熊猫' }, { e: '🦄', n: '独角兽' }, { e: '🐸', n: '青蛙' }, { e: '🐥', n: '小鸡' },
@@ -209,10 +210,13 @@ const store = {
   set(k, v) { try { localStorage.setItem('sanziqi-' + k, JSON.stringify(v)); } catch (e) {} },
 };
 
-let players = store.get('players', [{ role: '宝宝', animal: 0 }, { role: '妈妈', animal: 1 }]);
+let players = store.get('players', [{ role: KID, animal: 0 }, { role: '妈妈', animal: 1 }]);
 let size = store.get('size', 5);
 let first = store.get('first', 0);
 let scores = store.get('scores', {});
+// The kid's role used to be called 宝宝; carry over saved picks and stars.
+players.forEach(p => { if (!ROLES.includes(p.role)) p.role = p.role === '宝宝' ? KID : ROLES.find(r => !players.some(q => q.role === r)); });
+if (scores['宝宝'] != null) { scores[KID] = (scores[KID] || 0) + scores['宝宝']; delete scores['宝宝']; store.set('scores', scores); }
 let soundOn = store.get('sound', true);
 
 let board = [], turn = 0, history = [], over = false, locked = false, hintTimer = null;
@@ -429,7 +433,7 @@ function win(cells) {
   setMsg(`${w.a.e} <b>${w.role}</b> 连成三个啦！`, w.color);
   sfxWin();
   confetti(w.color, w.a.e);
-  const cheer = l.role === '宝宝' ? '宝宝下次加油！' : (w.role === '宝宝' ? '宝宝太厉害了！' : '真棒！');
+  const cheer = l.role === KID ? `${KID}下次加油！` : (w.role === KID ? praise(l.role, w.a.n) : '真棒！');
   say(`${w.role}赢啦！${cheer}`);
   first = 1 - turn; // the other player starts next round
   setTimeout(() => {
@@ -439,6 +443,31 @@ function win(cells) {
     $('winBox').style.setProperty('--wc', w.color);
     $('winBox').classList.remove('hidden');
   }, 1400);
+}
+
+/* Praise for when the kid wins. l = loser's role, a = winner's animal name. */
+const PRAISE = [
+  (l, a) => `${KID}太厉害了！三个棋子排成一条线，像小火车一样整整齐齐！`,
+  (l, a) => `哇！${KID}的小脑袋转得真快，是个下棋小高手！`,
+  (l, a) => `${KID}看准了位置就下，一点都不犹豫，真勇敢！`,
+  (l, a) => `耶！${l}都被${KID}打败啦！快来抱一抱，给你一个大大的拥抱！`,
+  (l, a) => `${KID}好聪明呀！一步一步想好了才下，这就叫动脑筋！`,
+  (l, a) => `太棒啦！${KID}又得到一颗星星，闪闪发光，就像${KID}一样亮晶晶！`,
+  (l, a) => `${KID}是冠军！${a}开心得都跳起舞来啦！`,
+  (l, a) => `哇塞！${KID}下得真好，一次比一次厉害！`,
+  (l, a) => `${KID}认真想、认真下，所以才赢的，真了不起！`,
+  (l, a) => `${KID}发现了连成三个的小秘密，真是个聪明的小侦探！`,
+  (l, a) => `好厉害！${KID}把${l}都难住啦，${l}下一局要更加油才行！`,
+  (l, a) => `大家快给${KID}鼓鼓掌！啪啪啪！${KID}最棒啦！`,
+  (l, a) => `${KID}不但会连起来，还会挡住${l}，真是又会进攻又会防守！`,
+  (l, a) => `哇！${KID}今天下棋像个小老师一样，${l}要跟你学习啦！`,
+];
+let lastPraise = -1;
+function praise(l, a) {
+  let i;
+  do { i = Math.floor(Math.random() * PRAISE.length); } while (i === lastPraise);
+  lastPraise = i;
+  return PRAISE[i](l, a);
 }
 
 function draw() {
