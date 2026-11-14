@@ -76,6 +76,9 @@ h1 span{color:var(--p0)} h1 em{font-style:normal;color:var(--p1)}
 .name-card .lbl{margin:0}
 #kidName{flex:1;min-width:120px;font:inherit;font-size:24px;color:var(--p0);padding:6px 14px;border-radius:999px;border:3px solid #f3f0fa;background:#fffdf7;outline:none;user-select:text;-webkit-user-select:text}
 #kidName:focus{border-color:var(--p0)}
+.pinput{width:100%;font:inherit;font-size:20px;text-align:center;color:var(--pc);padding:6px 12px;margin-bottom:10px;border-radius:999px;border:3px solid #f3f0fa;background:#fffdf7;outline:none;user-select:text;-webkit-user-select:text}
+.pinput:focus{border-color:var(--pc)}
+.pinput::placeholder,#kidName::placeholder{color:#c9c2dc}
 .sub{margin-top:12px}
 .opt .av{line-height:1.1}
 .opt small{font-size:14px;color:var(--muted)}
@@ -221,6 +224,7 @@ const $ = id => document.getElementById(id);
 
 /* ---------- data ---------- */
 const ADULTS = ['爸爸', '妈妈', '外婆', '外公', '奶奶', '爷爷'];
+const NAMED = 'name:';  // a typed-in name is stored as the role 'name:<what was typed>'
 const KIDKEY = '@kid'; // the kid's role is stored under this key; the name is typed in on the setup page
 const ANIMALS = [
   { e: '🐰', n: '小兔子' }, { e: '🐻', n: '小熊' }, { e: '🐱', n: '小猫' }, { e: '🐶', n: '小狗' },
@@ -242,10 +246,11 @@ let first = store.get('first', 0);
 let scores = store.get('scores', {});
 let solo = store.get('solo', false);   // play against a computer animal
 let level = store.get('level', 0);     // 0 = the animal goes easy, 1 = it plays properly
-let teach = store.get('teach', true);  // warn / nudge the kid during play
+let teach = store.get('teach', true);
+let aiName = store.get('aiName', '');  // typed-in name for the computer player; empty = the animal's name  // warn / nudge the kid during play
 // Older versions saved the kid's name as the role itself. Move that to KIDKEY and keep the name and stars.
 {
-  const known = r => r === KIDKEY || ADULTS.includes(r);
+  const known = r => r === KIDKEY || ADULTS.includes(r) || r.startsWith(NAMED);
   players.forEach(p => { if (!known(p.role)) { if (!KID && p.role !== '宝宝') KID = p.role; p.role = KIDKEY; } });
   if (players[0].role === players[1].role) players[1].role = ADULTS.find(r => r !== players[0].role);
   let moved = false;
@@ -261,7 +266,8 @@ let board = [], turn = 0, history = [], over = false, locked = false, hintTimer 
 // key = what stars are saved under; role = the name shown and spoken.
 const P = i => {
   const raw = players[i].role, a = ANIMALS[players[i].animal], ai = solo && i === 1;
-  return { i, a, color: COLORS[i], ai, kid: !ai && raw === KIDKEY, key: ai ? a.n : raw, role: ai ? a.n : raw === KIDKEY ? KID : raw };
+  const role = ai ? (aiName || a.n) : raw === KIDKEY ? KID : raw.startsWith(NAMED) ? raw.slice(NAMED.length) : raw;
+  return { i, a, color: COLORS[i], ai, kid: !ai && raw === KIDKEY, key: ai ? a.n : raw, role };
 };
 
 /* ---------- sound & speech ---------- */
@@ -315,17 +321,20 @@ $('soundBtn').onclick = () => {
 };
 
 /* ---------- setup screen ---------- */
-function renderSetup() {
+const cleanName = v => v.replace(/[<>&"'`]/g, '').trim();
+const cardTitle = p => p.ai ? p.role + '（电脑）' : p.role + '的' + p.a.n;
+function renderSetup() { renderCards(); renderOpts(); }
+function renderCards() {
   const wrap = $('pcards'); wrap.innerHTML = '';
   [0, 1].forEach(i => {
     const p = P(i), other = players[1 - i];
     const c = document.createElement('div');
     c.className = 'pcard'; c.style.setProperty('--pc', p.color);
-    c.innerHTML = `<div class="preview">${p.a.e}</div><div class="pname">${p.ai ? p.a.n + '（电脑）' : p.role + '的' + p.a.n}</div>`;
+    c.innerHTML = `<div class="preview">${p.a.e}</div><div class="pname">${cardTitle(p)}</div>`;
     const roles = document.createElement('div'); roles.className = 'roles';
     if (!p.ai) [KIDKEY, ...ADULTS].forEach(r => {
       const b = document.createElement('button');
-      b.className = 'role' + (r === players[i].role ? ' on' : ''); b.textContent = r === KIDKEY ? KID : r;
+      b.className = 'role' + (r === players[i].role ? ' on' : ''); b.textContent = r === KIDKEY ? KID : r; b.dataset.r = r;
       b.disabled = !solo && r === other.role;
       b.onclick = () => { players[i].role = r; tone(660 + i * 120, .1, 'triangle'); saveSetup(); };
       roles.appendChild(b);
@@ -339,10 +348,33 @@ function renderSetup() {
       b.onclick = () => { players[i].animal = k; sfxPlace(i); say(a.n); saveSetup(); };
       animals.appendChild(b);
     });
-    c.append(roles, animals);
+    c.append(roles);
+    // Type a name for the other player (or for the computer animal). The kid's own name is typed at the top.
+    if (!p.kid) {
+      const raw = players[i].role, inp = document.createElement('input');
+      inp.className = 'pinput'; inp.maxLength = 8; inp.autocomplete = 'off'; inp.enterKeyHint = 'done';
+      inp.placeholder = p.ai ? `给${p.a.n}起个名字` : '✏️ 或者自己写名字';
+      inp.value = p.ai ? aiName : raw.startsWith(NAMED) ? raw.slice(NAMED.length) : '';
+      inp.oninput = () => {
+        const v = cleanName(inp.value);
+        if (p.ai) { aiName = v; store.set('aiName', v); }
+        else {
+          players[i].role = v ? NAMED + v : (ADULTS.includes(raw) ? raw : ADULTS.find(r => r !== other.role));
+          store.set('players', players);
+        }
+        // Only patch this card, so the keyboard (and Chinese typing) is not interrupted.
+        c.querySelector('.pname').textContent = cardTitle(P(i));
+        roles.querySelectorAll('.role').forEach(b => b.classList.toggle('on', b.dataset.r === players[i].role));
+        renderOpts();
+      };
+      inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
+      c.append(inp);
+    }
+    c.append(animals);
     wrap.appendChild(c);
   });
-
+}
+function renderOpts() {
   const opts = (id, list, cur, pickFn) => {
     const box = $(id); box.innerHTML = '';
     list.forEach(([val, icon, label, note]) => {
@@ -387,7 +419,7 @@ function saveSetup() {
   const inp = $('kidName');
   inp.value = KID === '宝宝' ? '' : KID;
   inp.oninput = () => {
-    KID = inp.value.replace(/[<>&"'`]/g, '').trim() || '宝宝';
+    KID = cleanName(inp.value) || '宝宝';
     store.set('kid', KID); renderSetup();
   };
   inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
